@@ -74,6 +74,6 @@ void SendNotification(string title, string body)
     }
     else if (OperatingSystem.IsMacOS())
     {
-        Process.Start("osascript", ["-e", $"display notification {body} with title {title}"]);
+        Process.Start("osascript", ["-e", $"display notification \"{body}\" with title \"{title}\""]);
     }
 }
