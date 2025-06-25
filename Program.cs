@@ -1,79 +1,29 @@
-﻿using System.Diagnostics;
-using System.Text.Json;
+﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using AuthCodeListener;
-using MQTTnet;
-using TextCopy;
 
-string endpoint = "";
-int port = 1883;
-string topic = "";
-string username = "";
-string password = "";
-
-var jsonOpts = new JsonSerializerOptions
+try
 {
-    // PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    PropertyNameCaseInsensitive = true
-};
+    var builder = Host.CreateDefaultBuilder(args);
 
-var factory = new MqttClientFactory();
-var client = factory.CreateMqttClient();
-
-client.ApplicationMessageReceivedAsync += HandleMessage;
-
-var options = new MqttClientOptionsBuilder()
-    .WithTcpServer(endpoint, port)
-    .WithCredentials(username, password)
-    .WithCleanSession()
-    .Build();
-
-await client.ConnectAsync(options, CancellationToken.None);
-await client.SubscribeAsync(topic);
-
-Console.WriteLine($"MQTT client subscribed to topic {topic}");
-
-Console.WriteLine("Press enter to exit.");
-Console.ReadLine();
-
-async Task HandleMessage(MqttApplicationMessageReceivedEventArgs args)
-{
-    try
+    builder.ConfigureAppConfiguration((context, config) =>
     {
-        string payloadAsString = args.ApplicationMessage.ConvertPayloadToString();
-        var payload = JsonSerializer.Deserialize<AuthCodePayload>(payloadAsString, jsonOpts);
-        if (payload == null)
-        {
-            Console.WriteLine("Message could not be deserialized");
-            return;
-        }
+        config.AddJsonFile("appsettings.json", optional: true);
+    });
 
-        Console.WriteLine($"[{topic}] Received code {payload.Code} from {payload.Source}");
-        await ClipboardService.SetTextAsync(payload.Code);
-
-        string notificationTitle = "Verification Code Listener";
-        string notificationBody = $"Copied verification code {payload.Code} to clipboard via {payload.Source}";
-        SendNotification(notificationTitle, notificationBody);
-    }
-    catch (Exception ex)
+    builder.ConfigureServices((context, services) =>
     {
-        Console.WriteLine($"Error handling MQTT message: {ex}");
-    }
+        services.Configure<MqttConfig>(context.Configuration.GetSection("Mqtt"));
+        services.AddHostedService<MqttListenerService>();
+    });
+
+    builder.UseConsoleLifetime();
+
+    var app = builder.Build();
+    app.Run();
 }
-
-void SendNotification(string title, string body)
+catch (Exception ex)
 {
-    if (OperatingSystem.IsLinux())
-    {
-        Process.Start("notify-send",
-        [
-            "--urgency", "normal",
-            "--expire-time", "5000",
-            title,
-            body
-        ]);
-    }
-    else if (OperatingSystem.IsMacOS())
-    {
-        Process.Start("osascript", ["-e", $"display notification \"{body}\" with title \"{title}\""]);
-    }
+    Console.WriteLine(ex);
 }
